@@ -159,7 +159,13 @@ func (s *Session) Attach(ctx context.Context, detachByte ...byte) error {
 	// Timeout to ignore initial terminal control sequences (50ms)
 	startTime := time.Now()
 	const controlSeqTimeout = 50 * time.Millisecond
-	const terminalStyleReset = "\x1b]8;;\x1b\\\x1b[0m\x1b[24m\x1b[39m\x1b[49m"
+	// Note: originally included an OSC-8 hyperlink close ("\x1b]8;;\x1b\\") at the
+	// start. Windows Terminal, PowerShell SSH, and some mobile SSH clients do not
+	// consume that sequence cleanly — the trailing `\` (ST tail) echoes back via
+	// stdin and leaks into the next attach as a stray `\` keystroke. SGR reset
+	// alone resets hyperlink state in the terminals we care about. See upstream
+	// issue asheshgoplani/agent-deck#586.
+	const terminalStyleReset = "\x1b[0m\x1b[24m\x1b[39m\x1b[49m"
 	const clearScrollback = "\033[3J"
 	outputDone := make(chan struct{})
 
