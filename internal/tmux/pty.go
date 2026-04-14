@@ -212,6 +212,18 @@ func (s *Session) Attach(ctx context.Context, detachByte ...byte) error {
 				continue
 			}
 
+			// Drop a solitary `\` arriving within the 50ms startup window.
+			// tmux's terminal capability probes on attach end with ST ("\x1b\\"),
+			// and on Windows Terminal / PowerShell SSH / mobile SSH clients the
+			// ST tail is sometimes delivered in a separate stdin chunk as just
+			// the bare `\` byte (0x5c) — the ESC-only filter above lets it
+			// through. A user sending `\` as their very first keystroke within
+			// 50ms of attach is essentially impossible.
+			// Ref: asheshgoplani/agent-deck#586.
+			if time.Since(startTime) < controlSeqTimeout && n == 1 && buf[0] == 0x5c {
+				continue
+			}
+
 			// Check for the detach key anywhere in the input chunk.
 			// Some terminals coalesce reads, so detach must not require a single-byte read.
 			// Handles raw byte, xterm modifyOtherKeys, and kitty CSI u encodings.
