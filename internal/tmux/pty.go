@@ -212,16 +212,25 @@ func (s *Session) Attach(ctx context.Context, detachByte ...byte) error {
 				continue
 			}
 
-			// Drop a solitary `\` arriving within the 50ms startup window.
+			// Strip a leading `\` arriving within the 50ms startup window.
 			// tmux's terminal capability probes on attach end with ST ("\x1b\\"),
 			// and on Windows Terminal / PowerShell SSH / mobile SSH clients the
-			// ST tail is sometimes delivered in a separate stdin chunk as just
-			// the bare `\` byte (0x5c) — the ESC-only filter above lets it
-			// through. A user sending `\` as their very first keystroke within
-			// 50ms of attach is essentially impossible.
+			// ST tail is sometimes delivered as a bare `\` byte (0x5c) — either
+			// in its own chunk or prepended to a subsequent chunk. The ESC-only
+			// filter above lets these through. A real keystroke of `\` within
+			// 50ms of attach is essentially impossible, so strip it.
 			// Ref: asheshgoplani/agent-deck#586.
-			if time.Since(startTime) < controlSeqTimeout && n == 1 && buf[0] == 0x5c {
-				continue
+			if time.Since(startTime) < controlSeqTimeout && n > 0 && buf[0] == 0x5c {
+				// Optional tracing: set AGENTDECK_TRACE_ATTACH_STDIN=1 to log stripped bytes
+				if os.Getenv("AGENTDECK_TRACE_ATTACH_STDIN") == "1" {
+					fmt.Fprintf(os.Stderr, "agent-deck: stripped leading \\ from attach-startup stdin chunk (n=%d)\n", n)
+				}
+				if n == 1 {
+					continue
+				}
+				// Drop the leading `\`, forward the rest
+				copy(buf[0:], buf[1:n])
+				n--
 			}
 
 			// Check for the detach key anywhere in the input chunk.
