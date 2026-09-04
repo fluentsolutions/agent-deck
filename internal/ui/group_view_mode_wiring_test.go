@@ -256,12 +256,8 @@ func TestCycleGroupViewKeyTogglesMode(t *testing.T) {
 		t.Fatalf("after 3 presses expected LastInteraction, got %v", home.groupViewMode)
 	}
 	press()
-	if home.groupViewMode != session.GroupViewLastInteractionGrouped {
-		t.Fatalf("after 4 presses expected LastInteractionGrouped, got %v", home.groupViewMode)
-	}
-	press()
 	if home.groupViewMode != session.GroupViewNormal {
-		t.Fatalf("after 5 presses expected Normal again, got %v", home.groupViewMode)
+		t.Fatalf("after 4 presses expected Normal again, got %v", home.groupViewMode)
 	}
 }
 
@@ -471,92 +467,6 @@ func TestLastInteractionModeSurvivesTheUIStateClamp(t *testing.T) {
 	mode := session.GroupViewLastInteraction
 	if mode < session.GroupViewNormal || mode >= session.GroupViewModeCount {
 		t.Fatalf("GroupViewLastInteraction (%d) is outside the persisted range [0,%d) and would be clamped to Normal on restart",
-			mode, session.GroupViewModeCount)
-	}
-}
-
-func TestLastInteractionGroupedWiringKeepsGroupsAndOrdersThem(t *testing.T) {
-	home, _ := buildTwoGroupHome(t)
-	now := time.Now()
-
-	// The freshest touch is in group beta, so beta must lead — and both group
-	// headers must still be on screen, which is the whole point of this mode.
-	setLastInteraction(t, home, map[string]time.Time{
-		"b2": now.Add(-1 * time.Minute),
-		"b1": now.Add(-30 * time.Minute),
-		"a1": now.Add(-3 * time.Hour),
-		"a2": now.Add(-4 * time.Hour),
-		"a3": now.Add(-5 * time.Hour),
-	})
-
-	home.groupViewMode = session.GroupViewLastInteractionGrouped
-	home.rebuildFlatItems()
-
-	var shape []string
-	for _, it := range home.flatItems {
-		switch it.Type {
-		case session.ItemTypeGroup:
-			shape = append(shape, "group:"+it.Path)
-		case session.ItemTypeSession:
-			if it.Session != nil {
-				shape = append(shape, it.Session.Title)
-			}
-		}
-	}
-
-	want := []string{"group:beta", "b2", "b1", "group:alpha", "a1", "a2", "a3"}
-	if len(shape) != len(want) {
-		t.Fatalf("layout = %v, want %v", shape, want)
-	}
-	for i := range want {
-		if shape[i] != want[i] {
-			t.Fatalf("layout = %v, want %v", shape, want)
-		}
-	}
-}
-
-func TestLastInteractionGroupedWiringIgnoresAgentStatus(t *testing.T) {
-	home, _ := buildTwoGroupHome(t)
-	now := time.Now()
-
-	// a3 is the only running session and the stalest by user interaction. It
-	// must stay at the bottom of its group, and its group must not be hoisted.
-	setOnlySessionRunning(t, home, "a3")
-	setLastInteraction(t, home, map[string]time.Time{
-		"a1": now.Add(-2 * time.Hour),
-		"a2": now.Add(-3 * time.Hour),
-		"a3": now.Add(-48 * time.Hour),
-		"b1": now.Add(-1 * time.Minute),
-		"b2": now.Add(-10 * time.Minute),
-	})
-
-	home.groupViewMode = session.GroupViewLastInteractionGrouped
-	home.rebuildFlatItems()
-
-	var shape []string
-	for _, it := range home.flatItems {
-		switch it.Type {
-		case session.ItemTypeGroup:
-			shape = append(shape, "group:"+it.Path)
-		case session.ItemTypeSession:
-			if it.Session != nil {
-				shape = append(shape, it.Session.Title)
-			}
-		}
-	}
-
-	want := []string{"group:beta", "b1", "b2", "group:alpha", "a1", "a2", "a3"}
-	for i := range want {
-		if i >= len(shape) || shape[i] != want[i] {
-			t.Fatalf("layout = %v, want %v (a running session must not be hoisted)", shape, want)
-		}
-	}
-}
-
-func TestLastInteractionGroupedModeSurvivesTheUIStateClamp(t *testing.T) {
-	mode := session.GroupViewLastInteractionGrouped
-	if mode < session.GroupViewNormal || mode >= session.GroupViewModeCount {
-		t.Fatalf("GroupViewLastInteractionGrouped (%d) is outside the persisted range [0,%d) and would reset to Normal on restart",
 			mode, session.GroupViewModeCount)
 	}
 }

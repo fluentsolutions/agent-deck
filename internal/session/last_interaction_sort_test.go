@@ -281,15 +281,14 @@ func TestSortByLastInteraction_IgnoresAgentActivity(t *testing.T) {
 func TestGroupViewLastInteraction_IsInTheHotkeyCycle(t *testing.T) {
 	// Cycling with "t" is (mode+1)%GroupViewModeCount; the new mode must be
 	// reachable and must not have displaced the existing ones.
-	if GroupViewModeCount != 5 {
-		t.Fatalf("GroupViewModeCount = %d, want 5", GroupViewModeCount)
+	if GroupViewModeCount != 4 {
+		t.Fatalf("GroupViewModeCount = %d, want 4", GroupViewModeCount)
 	}
 	want := map[GroupViewMode]string{
-		GroupViewNormal:                 "Normal",
-		GroupViewActiveTop:              "Active on top",
-		GroupViewPopulatedTop:           "Populated on top",
-		GroupViewLastInteraction:        "Last interaction",
-		GroupViewLastInteractionGrouped: "Last interaction (grouped)",
+		GroupViewNormal:          "Normal",
+		GroupViewActiveTop:       "Active on top",
+		GroupViewPopulatedTop:    "Populated on top",
+		GroupViewLastInteraction: "Last interaction",
 	}
 	for mode, label := range want {
 		if got := mode.Label(); got != label {

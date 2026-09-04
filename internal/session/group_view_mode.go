@@ -26,16 +26,10 @@ const (
 	// output does not move a row, so a session that has been talking to itself
 	// for an hour stays exactly where you left it.
 	GroupViewLastInteraction
-	// GroupViewLastInteractionGrouped is the same recency order as
-	// GroupViewLastInteraction, but it keeps the group tree: groups are ordered
-	// among their siblings by the most recent interaction anywhere inside them,
-	// and sessions are ordered by recency within each group. Use it to find what
-	// you were last working on without losing the folder it lives in.
-	GroupViewLastInteractionGrouped
 )
 
 // GroupViewModeCount is the number of cycle-able modes (used for "(mode+1)%N").
-const GroupViewModeCount = 5
+const GroupViewModeCount = 4
 
 // Label returns a short human-readable name for the mode (for status hints).
 func (m GroupViewMode) Label() string {
@@ -46,8 +40,6 @@ func (m GroupViewMode) Label() string {
 		return "Populated on top"
 	case GroupViewLastInteraction:
 		return "Last interaction"
-	case GroupViewLastInteractionGrouped:
-		return "Last interaction (grouped)"
 	default:
 		return "Normal"
 	}
