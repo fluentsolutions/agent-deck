@@ -19,10 +19,17 @@ const (
 	// (with all their sessions, unsplit) and sinks empty groups below the
 	// divider.
 	GroupViewPopulatedTop
+	// GroupViewLastInteraction abandons the group tree entirely and renders one
+	// flat list of sessions ordered by the most recent USER interaction first —
+	// the session you last attached to, sent to, or started/stopped by hand sits
+	// at the top. Unlike the other modes this is a sort, not a partition: agent
+	// output does not move a row, so a session that has been talking to itself
+	// for an hour stays exactly where you left it.
+	GroupViewLastInteraction
 )
 
 // GroupViewModeCount is the number of cycle-able modes (used for "(mode+1)%N").
-const GroupViewModeCount = 3
+const GroupViewModeCount = 4
 
 // Label returns a short human-readable name for the mode (for status hints).
 func (m GroupViewMode) Label() string {
@@ -31,6 +38,8 @@ func (m GroupViewMode) Label() string {
 		return "Active on top"
 	case GroupViewPopulatedTop:
 		return "Populated on top"
+	case GroupViewLastInteraction:
+		return "Last interaction"
 	default:
 		return "Normal"
 	}
@@ -43,6 +52,8 @@ func (m GroupViewMode) dividerLabel() string {
 		return "idle / done"
 	case GroupViewPopulatedTop:
 		return "empty groups"
+	case GroupViewLastInteraction:
+		return dividerNeverOpened
 	default:
 		return ""
 	}

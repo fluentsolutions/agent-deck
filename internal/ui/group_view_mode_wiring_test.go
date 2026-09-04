@@ -252,8 +252,12 @@ func TestCycleGroupViewKeyTogglesMode(t *testing.T) {
 		t.Fatalf("after 2 presses expected PopulatedTop, got %v", home.groupViewMode)
 	}
 	press()
+	if home.groupViewMode != session.GroupViewLastInteraction {
+		t.Fatalf("after 3 presses expected LastInteraction, got %v", home.groupViewMode)
+	}
+	press()
 	if home.groupViewMode != session.GroupViewNormal {
-		t.Fatalf("after 3 presses expected Normal again, got %v", home.groupViewMode)
+		t.Fatalf("after 4 presses expected Normal again, got %v", home.groupViewMode)
 	}
 }
 
@@ -362,4 +366,107 @@ func TestTickRepartitionsActiveTopAfterStatusChange(t *testing.T) {
 
 func TestViewModePartitionRemoteSessionNotApplicable(t *testing.T) {
 	t.Skip("RemoteSession N/A: group view-mode partitioning runs before remote rows are appended; remote parity is selection preservation across rebuilds.")
+}
+
+// setLastInteraction stamps each named session's last-user-interaction clock.
+// Titles absent from the map are left never-touched (zero time).
+func setLastInteraction(t *testing.T, h *Home, when map[string]time.Time) {
+	t.Helper()
+
+	h.instancesMu.Lock()
+	defer h.instancesMu.Unlock()
+	for _, inst := range h.instances {
+		inst.LastAccessedAt = when[inst.Title]
+	}
+}
+
+// orderedSessionTitles lists the visible session rows top to bottom, with "──"
+// standing in for the divider.
+func orderedSessionTitles(h *Home) []string {
+	out := make([]string, 0, len(h.flatItems))
+	for _, it := range h.flatItems {
+		switch it.Type {
+		case session.ItemTypeSession:
+			if it.Session != nil {
+				out = append(out, it.Session.Title)
+			}
+		case session.ItemTypeDivider:
+			out = append(out, "──")
+		}
+	}
+	return out
+}
+
+func TestLastInteractionWiringSortsFlatAcrossGroups(t *testing.T) {
+	home, _ := buildTwoGroupHome(t)
+	now := time.Now()
+
+	// b2 (group beta) is the most recently touched; a2 (group alpha) next.
+	// b1 was never touched. The point of the mode is that group membership
+	// stops mattering, so a beta session can outrank every alpha session.
+	setLastInteraction(t, home, map[string]time.Time{
+		"b2": now.Add(-1 * time.Minute),
+		"a2": now.Add(-10 * time.Minute),
+		"a1": now.Add(-3 * time.Hour),
+		"a3": now.Add(-2 * 24 * time.Hour),
+	})
+
+	home.groupViewMode = session.GroupViewLastInteraction
+	home.rebuildFlatItems()
+
+	got := orderedSessionTitles(home)
+	want := []string{"b2", "a2", "a1", "a3", "──", "b1"}
+	if len(got) != len(want) {
+		t.Fatalf("row order = %v, want %v", got, want)
+	}
+	for i := range want {
+		if got[i] != want[i] {
+			t.Fatalf("row order = %v, want %v", got, want)
+		}
+	}
+
+	for _, it := range home.flatItems {
+		if it.Type == session.ItemTypeGroup {
+			t.Fatalf("last-interaction view must not render group headers, found %q", it.Path)
+		}
+	}
+}
+
+func TestLastInteractionWiringIgnoresAgentStatus(t *testing.T) {
+	home, _ := buildTwoGroupHome(t)
+	now := time.Now()
+
+	// a3 is the busiest session on the board and the one the user has not
+	// looked at in two days. It must not climb.
+	setOnlySessionRunning(t, home, "a3")
+	setLastInteraction(t, home, map[string]time.Time{
+		"a1": now.Add(-1 * time.Minute),
+		"a2": now.Add(-2 * time.Minute),
+		"a3": now.Add(-48 * time.Hour),
+		"b1": now.Add(-3 * time.Minute),
+		"b2": now.Add(-4 * time.Minute),
+	})
+
+	home.groupViewMode = session.GroupViewLastInteraction
+	home.rebuildFlatItems()
+
+	got := orderedSessionTitles(home)
+	want := []string{"a1", "a2", "b1", "b2", "a3"}
+	for i := range want {
+		if i >= len(got) || got[i] != want[i] {
+			t.Fatalf("row order = %v, want %v (running session must not be hoisted)", got, want)
+		}
+	}
+}
+
+func TestLastInteractionModeSurvivesTheUIStateClamp(t *testing.T) {
+	// saveUIState stores int(h.groupViewMode) and loadUIState clamps anything
+	// outside [GroupViewNormal, GroupViewModeCount) back to Normal. A new mode
+	// that fell outside that window would silently reset itself on every TUI
+	// restart, which is the bug this asserts against.
+	mode := session.GroupViewLastInteraction
+	if mode < session.GroupViewNormal || mode >= session.GroupViewModeCount {
+		t.Fatalf("GroupViewLastInteraction (%d) is outside the persisted range [0,%d) and would be clamped to Normal on restart",
+			mode, session.GroupViewModeCount)
+	}
 }

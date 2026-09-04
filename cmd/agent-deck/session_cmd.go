@@ -296,6 +296,11 @@ func handleSessionStart(profile string, args []string) {
 	// Claude: UUID is set by bash capture-resume pattern before exec
 	inst.PostStartSync(3 * time.Second)
 
+	// Starting a session by hand counts as touching it, for the TUI's
+	// last-interaction sort (see markUserInteraction). The saveSessionData
+	// below makes it durable.
+	markUserInteraction(storage, inst)
+
 	// Save updated state
 	if err := saveSessionData(storage, instances, groups); err != nil {
 		out.Error(fmt.Sprintf("failed to save session state: %v", err), ErrCodeInvalidOperation)
@@ -409,6 +414,9 @@ func handleSessionStop(profile string, args []string) {
 	// stop: if max_concurrent>=2 and multiple slots are now free, the next
 	// stop drains the next entry.
 	drained := drainGroupQueue(inst.GroupPath, instances, groups)
+
+	// Stopping a session by hand counts as touching it (see markUserInteraction).
+	markUserInteraction(storage, inst)
 
 	// Save updated state
 	if err := saveSessionData(storage, instances, groups); err != nil {
@@ -740,6 +748,13 @@ func handleSessionRestart(profile string, args []string) {
 	// Stamp the persisted freshness marker so subsequent watchdog ticks see
 	// this session as "just started" and skip (issue #30).
 	inst.LastStartedAt = time.Now()
+	// Restarting a session by hand counts as touching it (see markUserInteraction).
+	// Deliberately NOT done for `restart --all`: a fleet-wide sweep is
+	// maintenance, not "I am working in this session", and stamping all 80-odd
+	// sessions with the same instant would erase the ordering the sort exists
+	// to give.
+	markUserInteraction(storage, inst)
+
 	warning := inst.ConsumeCodexRestartWarning()
 	if warning != "" && !*jsonOutput {
 		fmt.Fprintf(os.Stderr, "Warning: %s\n", warning)
@@ -1334,7 +1349,7 @@ func handleSessionAttach(profile string, args []string) {
 	identifier := fs.Arg(0)
 
 	// Load sessions
-	_, instances, _, err := loadSessionData(profile)
+	attachStorage, instances, _, err := loadSessionData(profile)
 	if err != nil {
 		fmt.Fprintf(os.Stderr, "Error: %v\n", err)
 		os.Exit(1)
@@ -1367,10 +1382,18 @@ func handleSessionAttach(profile string, args []string) {
 	// Create context for attach
 	ctx := context.Background()
 
+	// Opening a session is the plainest user interaction there is; record it
+	// before the attach blocks, the way the TUI's attach path does.
+	markUserInteraction(attachStorage, inst)
+
 	if err := tmuxSession.Attach(ctx, detachByte); err != nil {
 		fmt.Fprintf(os.Stderr, "Error: failed to attach: %v\n", err)
 		os.Exit(1)
 	}
+
+	// And again on detach, so the timestamp reflects when the user actually
+	// stopped looking at it rather than when they started.
+	markUserInteraction(attachStorage, inst)
 }
 
 // errFocusNotFound signals that `session focus` was given an id absent from the
@@ -2757,7 +2780,7 @@ func handleSessionSend(profile string, args []string) {
 	}
 
 	// Load sessions
-	_, instances, _, err := loadSessionData(profile)
+	sendStorage, instances, _, err := loadSessionData(profile)
 	if err != nil {
 		out.Error(err.Error(), ErrCodeNotFound)
 		os.Exit(1)
@@ -2869,6 +2892,7 @@ func handleSessionSend(profile string, args []string) {
 			out.Error(fmt.Sprintf("failed to pre-fill prompt: %v", err), ErrCodeInvalidOperation)
 			os.Exit(1)
 		}
+		markUserInteraction(sendStorage, inst)
 		out.Success(fmt.Sprintf("Pre-filled prompt in '%s'", inst.Title), map[string]interface{}{
 			"success":       true,
 			"session_id":    inst.ID,
@@ -2922,6 +2946,12 @@ func handleSessionSend(profile string, args []string) {
 	if db := statedb.GetGlobal(); db != nil {
 		_ = db.WriteLastSentAt(inst.ID, sentAt.Unix())
 	}
+
+	// A send the USER made is also a last-interaction event for the TUI's
+	// "t" sort. Deliberately not the same clock as WriteLastSentAt above:
+	// that one records any delivered send, including the conductor traffic
+	// this call skips (see invocationIsAgentOriginated).
+	markUserInteraction(sendStorage, inst)
 
 	// Delivery succeeded, but if an operator draft was cleared and could not
 	// be typed back, it's no longer on screen — surface it on stderr (it's
