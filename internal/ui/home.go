@@ -2577,7 +2577,16 @@ func (h *Home) rebuildFlatItems() {
 	// Partition into top/bottom sections by view mode (active-on-top / populated-on-top).
 	// Runs after filtering/scoping but before window injection so windows follow
 	// their parent session into whichever section it lands in.
-	if h.groupViewMode != session.GroupViewNormal {
+	switch h.groupViewMode {
+	case session.GroupViewNormal:
+		// Nothing to do: the list keeps its group-tree order.
+	case session.GroupViewLastInteraction:
+		// A sort, not a partition. It drops group headers and returns one flat
+		// list of sessions ordered by the last time the USER touched them, so it
+		// also owns the tree-connector flags the recompute below would otherwise
+		// derive from group membership (see the guard on that block).
+		h.flatItems = session.SortByLastInteraction(h.flatItems)
+	default:
 		// Activity is computed from the full tree (collapse-agnostic) so a
 		// collapsed-but-populated group's header is placed by its real contents,
 		// not by the (absent) session rows under a collapsed header. It honors the
@@ -2597,8 +2606,14 @@ func (h *Home) rebuildFlatItems() {
 	// last row of that group's current segment. Only top-level sessions drive the
 	// └─ connector (sub-sessions use IsLastSubSession), so only they are rewritten
 	// here. Runs before window injection so injected windows inherit the flag.
+	//
+	// GroupViewLastInteraction is exempt: it produces a group-free list whose
+	// rows keep their original Path, so grouping by Path here would re-close the
+	// tree at every group boundary and scatter "└─" through the middle of one
+	// flat list. SortByLastInteraction has already set the flag on the last row
+	// of each divider-delimited section.
 	seenLaterRowInGroup := make(map[string]bool)
-	for i := len(h.flatItems) - 1; i >= 0; i-- {
+	for i := len(h.flatItems) - 1; h.groupViewMode != session.GroupViewLastInteraction && i >= 0; i-- {
 		it := &h.flatItems[i]
 		if it.Type == session.ItemTypeGroup {
 			// A group header starts a fresh segment for its Path. View-mode
@@ -6463,6 +6478,11 @@ func (h *Home) updateInner(msg tea.Msg) (tea.Model, tea.Cmd) {
 			h.setError(err)
 			return h, nil
 		}
+		// Sending a prompt is a deliberate user interaction with this session,
+		// so it counts for the last-interaction sort (hotkey "t"). Recorded
+		// before the goroutine: the send is fire-and-forget, and "the user
+		// addressed this session" is true at the moment they hit Enter.
+		inst.MarkAccessed()
 		text := msg.text
 		tmuxName := ts.Name
 		go func() {
@@ -7704,6 +7724,12 @@ func (h *Home) createSessionFromGlobalSearch(result *GlobalSearchResult) tea.Cmd
 		if err := inst.Start(); err != nil {
 			return sessionCreatedMsg{err: fmt.Errorf("failed to start session: %w", err)}
 		}
+
+		// Creating a session is a user interaction. Without this a brand-new
+		// session has a zero LastAccessedAt and the last-interaction sort
+		// ("t") would file it under "never opened" at the very bottom,
+		// seconds after the user asked for it.
+		inst.MarkAccessed()
 
 		return sessionCreatedMsg{instance: inst}
 	}
@@ -9636,7 +9662,9 @@ func (h *Home) handleMainKey(msg tea.KeyMsg) (tea.Model, tea.Cmd) {
 		return h, nil
 
 	case "t":
-		// Cycle list partition: normal → active-on-top → populated-on-top → normal.
+		// Cycle list view: normal → active-on-top → populated-on-top →
+		// last-interaction → normal. The last one is a flat sort by when the
+		// user last touched each session, not a partition.
 		// Preserve the cursor's row identity across the rebuild.
 		selectedBefore := h.captureSelectedItemIdentity()
 		h.groupViewMode = session.GroupViewMode((int(h.groupViewMode) + 1) % session.GroupViewModeCount)
@@ -12098,6 +12126,9 @@ func (h *Home) createSessionInGroupWithWorktreeAndOptions(
 			uiLog.Error("session_create_failed", slog.String("error", err.Error()))
 			return sessionCreatedMsg{err: err, tempID: tempID}
 		}
+		// See the sibling Start above: creation counts as a user interaction so
+		// the new session does not sort as "never opened".
+		inst.MarkAccessed()
 		uiLog.Info("session_create_succeeded", slog.String("id", inst.ID))
 		return sessionCreatedMsg{instance: inst, tempID: tempID, setupWarning: setupWarning}
 	}
@@ -12813,6 +12844,11 @@ func completeFork(
 		return nil, err
 	}
 
+	// Forking is a creation, and creation is a user interaction: without this
+	// the fork would sort as "never opened" in the last-interaction view the
+	// moment the user made it.
+	inst.MarkAccessed()
+
 	switch inst.Tool {
 	case "opencode":
 		go inst.DetectOpenCodeSession()
@@ -13367,6 +13403,8 @@ func (h *Home) captureAutoNameBeforeStop(inst *session.Instance) {
 // closeSession stops a session process but keeps metadata in list/storage.
 func (h *Home) closeSession(inst *session.Instance) tea.Cmd {
 	id := inst.ID
+	// Stopping a session by hand is a user interaction, not agent activity.
+	inst.MarkAccessed()
 	return func() tea.Msg {
 		killErr := inst.Kill()
 		return sessionClosedMsg{sessionID: id, killErr: killErr}
@@ -13501,6 +13539,8 @@ func (h *Home) restartSession(inst *session.Instance) tea.Cmd {
 		slog.String("title", inst.Title),
 		slog.String("tool", inst.Tool),
 	)
+	// Restarting by hand is a user interaction (see MarkAccessed).
+	inst.MarkAccessed()
 	return func() tea.Msg {
 		mcpUILog.Debug("restart_session_executing", slog.String("id", id))
 
@@ -13543,6 +13583,8 @@ func (h *Home) restartSessionFreshWith(
 		slog.String("title", inst.Title),
 		slog.String("tool", inst.Tool),
 	)
+	// Restarting by hand is a user interaction (see MarkAccessed).
+	inst.MarkAccessed()
 	return func() tea.Msg {
 		mcpUILog.Debug("restart_session_fresh_executing", slog.String("id", id))
 

@@ -957,6 +957,14 @@ func (inst *Instance) SetToolThreadSafe(t string) {
 
 // MarkAccessed updates the LastAccessedAt timestamp to now.
 //
+// LastAccessedAt is the session's "last touched by the user" clock, and it is
+// the only clock that is. Callers are the deliberate human actions — attaching,
+// detaching, sending the session a message, creating it, and starting, stopping
+// or restarting it by hand. Agent output, status transitions and heartbeats
+// must NOT call this: the TUI's last-interaction sort (hotkey "t", see
+// SortByLastInteraction) reads this field precisely so a session that has been
+// busy talking to itself does not climb the list.
+//
 // #1846: also persists it via a targeted single-row UPDATE. The in-memory
 // value used to reach SQLite only on the next full save cycle, which may
 // never come before the TUI exits — leaving the preview's fallback hours
