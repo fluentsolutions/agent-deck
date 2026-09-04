@@ -2586,12 +2586,6 @@ func (h *Home) rebuildFlatItems() {
 		// also owns the tree-connector flags the recompute below would otherwise
 		// derive from group membership (see the guard on that block).
 		h.flatItems = session.SortByLastInteraction(h.flatItems)
-	case session.GroupViewLastInteractionGrouped:
-		// The same recency order with the group tree kept: groups reordered by
-		// the most recent interaction inside them, sessions reordered within
-		// each group. The list stays group-structured, so the IsLastInGroup
-		// recompute below applies normally.
-		h.flatItems = session.SortGroupsByLastInteraction(h.flatItems)
 	default:
 		// Activity is computed from the full tree (collapse-agnostic) so a
 		// collapsed-but-populated group's header is placed by its real contents,
@@ -9669,9 +9663,8 @@ func (h *Home) handleMainKey(msg tea.KeyMsg) (tea.Model, tea.Cmd) {
 
 	case "t":
 		// Cycle list view: normal → active-on-top → populated-on-top →
-		// last-interaction → last-interaction-grouped → normal. The last two are
-		// sorts by when the user last touched each session, not partitions: the
-		// first drops the group tree, the second keeps it.
+		// last-interaction → normal. The last one is a flat sort by when the
+		// user last touched each session, not a partition.
 		// Preserve the cursor's row identity across the rebuild.
 		selectedBefore := h.captureSelectedItemIdentity()
 		h.groupViewMode = session.GroupViewMode((int(h.groupViewMode) + 1) % session.GroupViewModeCount)
