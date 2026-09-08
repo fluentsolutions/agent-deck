@@ -35,7 +35,14 @@ func TestStoredAccountRenderBaseline(t *testing.T) {
 						var b strings.Builder
 						h.renderSessionItem(&b, session.Item{Type: session.ItemTypeSession, Session: inst, Level: 1, Path: "work", IsLastInGroup: true}, selected, h.getSessionRenderSnapshot(), 240)
 						row := b.String()
-						require.Contains(t, row, "[account:"+label+"]", "stored slot must be visible on each session row")
+						if account == "" {
+							// No stored slot: no row badge. "inherited" is the absence
+							// of information and is the widest badge variant, so it is
+							// not worth the title width it costs on a narrow pane.
+							require.NotContains(t, row, "[account:", "a session with no stored slot must not carry an account badge")
+						} else {
+							require.Contains(t, row, "[account:"+label+"]", "stored slot must be visible on each session row")
+						}
 						require.Equal(t, 1, strings.Count(row, "\n"), "account controls cannot add logical rows")
 						require.NotContains(t, row, "\x1b]0;injected")
 						require.NotContains(t, row, "\a")

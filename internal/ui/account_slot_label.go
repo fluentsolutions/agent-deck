@@ -23,6 +23,19 @@ type accountPresentation struct {
 
 func newAccountPresentation(account string) accountPresentation {
 	label := storedAccountLabel(account)
+	// No stored slot: render no row badge at all. "inherited" is not a fact
+	// about the session, it is the absence of one — and it is the WIDEST
+	// variant the badge has (19 columns, wider than any real slot name), so on
+	// a narrow pane it costs every untagged row that much title and pushes the
+	// name into an ellipsis. The rows that carry real information (an explicit
+	// slot) keep their badge; the ones with nothing to say give the width back
+	// to the title.
+	//
+	// The label is still returned, because the session info card renders it
+	// from here and has the room to say "inherited" usefully.
+	if account == "" {
+		return accountPresentation{label: label}
+	}
 	return accountPresentation{
 		label:  label,
 		badge:  storedAccountPrefix + label + "]",
