@@ -36,7 +36,7 @@ func sameOrder(a, b []string) bool {
 
 // sessionIDs lists the session rows of a sorted list in order, using "──" to
 // mark the divider so section boundaries are visible in test failures.
-func sessionIDs(items []Item) []string {
+func sortedSessionIDs(items []Item) []string {
 	out := make([]string, 0, len(items))
 	for _, it := range items {
 		switch it.Type {
@@ -64,7 +64,7 @@ func TestSortByLastInteraction_MostRecentlyTouchedFirst(t *testing.T) {
 		mkSession("middling", now.Add(-30*time.Minute), created),
 	}
 
-	got := sessionIDs(SortByLastInteraction(items))
+	got := sortedSessionIDs(SortByLastInteraction(items))
 	want := []string{"freshest", "middling", "stale"}
 	if !sameOrder(got, want) {
 		t.Fatalf("order = %v, want %v", got, want)
@@ -80,7 +80,7 @@ func TestSortByLastInteraction_NeverTouchedSortLastBehindDivider(t *testing.T) {
 		mkSession("never-a", time.Time{}, now.Add(-1*time.Hour)),
 	}
 
-	got := sessionIDs(SortByLastInteraction(items))
+	got := sortedSessionIDs(SortByLastInteraction(items))
 	// Touched first; then the divider; then the never-touched block, newest
 	// session first (the CreatedAt tie-break).
 	want := []string{"touched", "──", "never-a", "never-b"}
@@ -115,7 +115,7 @@ func TestSortByLastInteraction_NoDividerWhenEitherSectionEmpty(t *testing.T) {
 		mkSession("a", now, now),
 		mkSession("b", now.Add(-time.Hour), now),
 	})
-	if got := sessionIDs(allTouched); !sameOrder(got, []string{"a", "b"}) {
+	if got := sortedSessionIDs(allTouched); !sameOrder(got, []string{"a", "b"}) {
 		t.Fatalf("all-touched order = %v, want [a b] with no divider", got)
 	}
 
@@ -123,7 +123,7 @@ func TestSortByLastInteraction_NoDividerWhenEitherSectionEmpty(t *testing.T) {
 		mkSession("a", time.Time{}, now),
 		mkSession("b", time.Time{}, now.Add(-time.Hour)),
 	})
-	if got := sessionIDs(noneTouched); !sameOrder(got, []string{"a", "b"}) {
+	if got := sortedSessionIDs(noneTouched); !sameOrder(got, []string{"a", "b"}) {
 		t.Fatalf("none-touched order = %v, want [a b] with no divider", got)
 	}
 }
@@ -142,7 +142,7 @@ func TestSortByLastInteraction_PinsOverrideRecency(t *testing.T) {
 		pinnedTopStale,
 	}
 
-	got := sessionIDs(SortByLastInteraction(items))
+	got := sortedSessionIDs(SortByLastInteraction(items))
 	want := []string{"pin-top", "normal", "──", "pin-bottom"}
 	if !sameOrder(got, want) {
 		t.Fatalf("order = %v, want %v", got, want)
@@ -172,7 +172,7 @@ func TestSortByLastInteraction_TieBreakIsDeterministic(t *testing.T) {
 	createdNew := same.Add(-1 * time.Hour)
 
 	// Equal LastAccessedAt -> newest CreatedAt first.
-	byCreated := sessionIDs(SortByLastInteraction([]Item{
+	byCreated := sortedSessionIDs(SortByLastInteraction([]Item{
 		mkSession("older", same, createdOld),
 		mkSession("newer", same, createdNew),
 	}))
@@ -181,7 +181,7 @@ func TestSortByLastInteraction_TieBreakIsDeterministic(t *testing.T) {
 	}
 
 	// Equal LastAccessedAt and CreatedAt -> title ascending.
-	byTitle := sessionIDs(SortByLastInteraction([]Item{
+	byTitle := sortedSessionIDs(SortByLastInteraction([]Item{
 		mkSession("zebra", same, createdOld),
 		mkSession("alpha", same, createdOld),
 	}))
@@ -251,7 +251,7 @@ func TestSortByLastInteraction_CreatingPlaceholdersGoFirst(t *testing.T) {
 	now := time.Date(2026, 9, 4, 12, 0, 0, 0, time.UTC)
 	placeholder := Item{Type: ItemTypeSession, CreatingID: "new", CreatingTitle: "new"}
 
-	got := sessionIDs(SortByLastInteraction([]Item{
+	got := sortedSessionIDs(SortByLastInteraction([]Item{
 		mkSession("touched", now, now),
 		placeholder,
 	}))
@@ -272,7 +272,7 @@ func TestSortByLastInteraction_IgnoresAgentActivity(t *testing.T) {
 	quiet := mkSession("user-just-opened", now.Add(-time.Minute), now.Add(-500*time.Hour))
 	quiet.Session.Status = StatusStopped
 
-	got := sessionIDs(SortByLastInteraction([]Item{busy, quiet}))
+	got := sortedSessionIDs(SortByLastInteraction([]Item{busy, quiet}))
 	if !sameOrder(got, []string{"user-just-opened", "busy-agent"}) {
 		t.Fatalf("order = %v, want [user-just-opened busy-agent]", got)
 	}
