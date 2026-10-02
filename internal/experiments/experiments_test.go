@@ -26,6 +26,12 @@ func runTestMain(m *testing.M) int {
 	// See internal/testutil/homeenv.go for the postmortem.
 	cleanupHome := testutil.IsolateHome()
 	defer cleanupHome()
+	// cleanupTestSessions below runs `tmux list-sessions` / `kill-session`
+	// with no -S/-L, so without this it lands on the user's live default
+	// server. Isolate the socket so it only ever sees this package's server.
+	// Deferred, so it runs after cleanupTestSessions.
+	cleanupTmux := testutil.IsolateTmuxSocket()
+	defer cleanupTmux()
 
 	os.Setenv("AGENTDECK_PROFILE", "_test")
 

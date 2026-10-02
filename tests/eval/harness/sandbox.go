@@ -110,7 +110,11 @@ func (s *Sandbox) Env() []string {
 		"AGENTDECK_SKIP_UPDATE_CHECK=1",
 	}
 	// Preserve a few passthrough vars that the binary and its children need.
-	for _, k := range []string{"LANG", "LC_ALL", "SHELL", "GOCACHE", "GOMODCACHE"} {
+	// TMUX_TMPDIR carries the TestMain's isolated socket dir (see
+	// testutil.IsolateTmuxSocket) into the binary. Without it the binary and
+	// every tmux it runs without the shim resolve /tmp/tmux-<uid>/default, the
+	// user's live server.
+	for _, k := range []string{"LANG", "LC_ALL", "SHELL", "GOCACHE", "GOMODCACHE", "TMUX_TMPDIR"} {
 		if v := os.Getenv(k); v != "" {
 			env = append(env, k+"="+v)
 		}
